@@ -24,6 +24,7 @@
 #endif
 
 #include <gst/gst.h>
+#include <gst/gst-compat-private.h>
 
 #include "gstmppdecbufferpool.h"
 #include "gstmppvideodec.h"
@@ -47,7 +48,7 @@ static GstStaticPadTemplate gst_mpp_video_dec_sink_template =
         "parsed = (boolean) true"
         ";"
         "video/x-h265,"
-        "stream-format = (string) { byte-stream },"
+        "stream-format = (string) { hvc1, hev1, byte-stream },"
         "alignment = (string) { au },"
         "parsed = (boolean) true"
         ";"
@@ -55,7 +56,8 @@ static GstStaticPadTemplate gst_mpp_video_dec_sink_template =
         "mpegversion = (int) { 1, 2, 4 },"
         "parsed = (boolean) true,"
         "systemstream = (boolean) false"
-        ";" "video/x-vp8" ";" "video/x-vp9" ";")
+        ";" "video/x-vp8" ";" "video/x-vp9" ";"
+        "image/jpeg," "parsed = (boolean) true" ";")
     );
 
 static GstStaticPadTemplate gst_mpp_video_dec_src_template =
@@ -108,6 +110,8 @@ to_mpp_codec (GstStructure * s)
     return MPP_VIDEO_CodingVP8;
   if (gst_structure_has_name (s, "video/x-vp9"))
     return MPP_VIDEO_CodingVP9;
+  if (gst_structure_has_name (s, "image/jpeg"))
+    return MPP_VIDEO_CodingMJPEG;
 
   /* add more type here */
   return MPP_VIDEO_CodingUnused;
@@ -181,8 +185,12 @@ static gboolean
 gst_mpp_video_dec_open (GstVideoDecoder * decoder)
 {
   GstMppVideoDec *self = GST_MPP_VIDEO_DEC (decoder);
+  gint io_mode = MPP_IO_MODE_SIMPLE;
+
   if (mpp_create (&self->mpp_ctx, &self->mpi))
     return FALSE;
+  self->mpi->control (self->mpp_ctx, MPP_SET_TRANSACTION_MODE,
+      (gpointer) & io_mode);
 
   GST_DEBUG_OBJECT (self, "created mpp context %p", self->mpp_ctx);
   return TRUE;
@@ -530,6 +538,8 @@ gst_mpp_video_dec_handle_frame (GstVideoDecoder * decoder,
   if (!gst_buffer_pool_is_active (pool)) {
     GstBuffer *codec_data;
     gint block_flag = MPP_POLL_BLOCK;
+    /* at least 200 */
+    gint64 block_timeout = 200;
 
     codec_data = self->input_state->codec_data;
     if (codec_data) {
@@ -571,6 +581,8 @@ gst_mpp_video_dec_handle_frame (GstVideoDecoder * decoder,
 
     self->mpi->control (self->mpp_ctx, MPP_SET_OUTPUT_BLOCK,
         (gpointer) & block_flag);
+	self->mpi->control (self->mpp_ctx, MPP_SET_OUTPUT_BLOCK_TIMEOUT,
+        (gpointer) & block_timeout);
 
     if (gst_mpp_video_acquire_frame_format (self)) {
       GstVideoCodecState *output_state;

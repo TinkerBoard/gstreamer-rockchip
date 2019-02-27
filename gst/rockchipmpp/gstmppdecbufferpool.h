@@ -43,6 +43,7 @@ struct _GstMppDecBufferPool
   guint num_queued;             /* number of buffers queued in the mpp/libvpu and gstvpudecbufferpool */
 
   guint size;
+  guint timeout_cnt;
   GstBuffer *buffers[VIDEO_MAX_FRAME];
 
   GstMppAllocator *vallocator;

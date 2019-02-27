@@ -238,8 +238,21 @@ gst_mpp_dec_buffer_pool_acquire_buffer (GstBufferPool * bpool,
   gint buf_index, ret, mode;
 
   ret = dec->mpi->decode_get_frame (dec->mpp_ctx, &mframe);
-  if (ret || NULL == mframe)
-    goto mpp_error;
+  if (ret || NULL == mframe) {
+    if (ret != MPP_ERR_TIMEOUT) {
+      goto mpp_error;
+    } else {
+      printf ("debian: mpp frame timeout! \n");
+
+      // Main thread have been exit
+      if (pool->timeout_cnt++ > 5)
+        goto mpp_error;
+
+      goto drop_frame;
+    }
+  }
+  // reset timeout
+  pool->timeout_cnt = 0;
 
   if (mpp_frame_get_discard (mframe) || mpp_frame_get_errinfo (mframe))
     goto drop_frame;
@@ -307,7 +320,8 @@ no_buffer:
   }
 drop_frame:
   {
-    mpp_frame_deinit (&mframe);
+    if (mframe)
+      mpp_frame_deinit (&mframe);
     return GST_FLOW_CUSTOM_ERROR_1;
   }
 }
